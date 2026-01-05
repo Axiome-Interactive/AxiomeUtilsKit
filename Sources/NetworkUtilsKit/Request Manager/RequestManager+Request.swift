@@ -75,9 +75,9 @@ extension RequestManager {
 															  cachePolicy: cachePolicy)
 		
 		request.timeoutInterval = timeout ?? self.requestTimeoutInterval
-		
-		Logger.requestSend.notice("\(description)")
-		
+
+		AppLogger.l("Request sent: \(description)", level: .info, category: .Network(.requestSend))
+
 		// Date
 		let startDate = Date()
 		let session = URLSession(configuration: self.requestConfiguration)
@@ -96,9 +96,9 @@ extension RequestManager {
 			
 			if response.statusCode >= 200 && response.statusCode < 300 {
 				if time > warningTime {
-					Logger.requestSuccess.warning("\(requestId)")
+					AppLogger.l("Request success (slow): \(requestId)", level: .warning, category: .Network(.requestSuccess))
 				} else {
-					Logger.requestSuccess.info("\(requestId)")
+					AppLogger.l("Request success: \(requestId)", level: .info, category: .Network(.requestSuccess))
 				}
 				return (response.statusCode, data)
 			} else if response.statusCode == 401 && retryAuthentification {
@@ -144,7 +144,7 @@ extension RequestManager {
 									   data: data)
 			}
 		} catch {
-			Logger.requestFail.fault("\(description) - \(error.localizedDescription)")
+			AppLogger.l("Request failed: \(description) - \(error.localizedDescription)", level: .error, category: .Network(.requestFail))
 			throw error
 		}
 	}
@@ -166,7 +166,7 @@ extension RequestManager {
 							 response: HTTPURLResponse,
 							 data: Data?) -> Error  {
 		let error = ResponseError.network(response: response, data: data)
-		Logger.requestFail.fault("\(requestId) - \(error.localizedDescription)")
+		AppLogger.l("Request error: \(requestId) - \(error.localizedDescription)", level: .error, category: .Network(.requestFail))
 		return error
 	}
 	

@@ -16,9 +16,6 @@ import UtilsKitCore
 import UtilsKit
 #endif
 
-extension Logger {
-	static let decode = Logger(subsystem: "NetworkUtilsKit", category: "Decode")
-}
 
 // MARK: Response
 extension RequestProtocol {
@@ -30,16 +27,16 @@ extension RequestProtocol {
 			switch cacheKey.type {
 			case .returnCacheDataElseLoad:
 				if let data = NetworkCache.shared.get(cacheKey) {
-					Logger.cache.notice("\(cacheKey.key)")
+					AppLogger.l("Cache hit: \(cacheKey.key)", level: .info, category: .Network(.cache))
 					return (statusCode: 200, data: data)
 				}
 				
 			case .returnCacheDataDontLoad:
 				if let data = NetworkCache.shared.get(cacheKey) {
-					Logger.cache.notice("\(cacheKey.key)")
+					AppLogger.l("Cache hit: \(cacheKey.key)", level: .info, category: .Network(.cache))
 					return (statusCode: 200, data: data)
 				} else {
-					Logger.cache.fault("\(cacheKey.key) - \(RequestError.emptyCache.localizedDescription)")
+					AppLogger.l("Cache miss: \(cacheKey.key) - \(RequestError.emptyCache.localizedDescription)", level: .error, category: .Network(.cache))
 					throw RequestError.emptyCache
 				}
 				
@@ -58,7 +55,7 @@ extension RequestProtocol {
 			return response
 		} catch {
 			if let cacheKey = self.cacheKey, let data = NetworkCache.shared.get(cacheKey) {
-				Logger.cache.notice("\(cacheKey.key)")
+				AppLogger.l("Cache fallback: \(cacheKey.key)", level: .info, category: .Network(.cache))
 				return (statusCode: (error as? RequestError)?.statusCode,
 						data: data)
 			} else {
@@ -83,7 +80,7 @@ extension RequestProtocol {
 			let objects = try T.decode(from: data)
 			return objects
 		} catch {
-			Logger.decode.fault("\(self.description)")
+			AppLogger.l("Decode failed: \(self.description)", level: .error, category: .Network(.requestFail))
 			throw error
 		}
 	}

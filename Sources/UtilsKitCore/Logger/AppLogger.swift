@@ -21,6 +21,17 @@ struct AppLogger {
         case WS(String)
         case View(String)
         case UC(String)
+        case Network(NetworkCategory)
+    }
+
+    enum NetworkCategory: String {
+        case requestSend = "Send"
+        case requestSuccess = "Success"
+        case requestFail = "Fail"
+        case requestCancel = "Cancel"
+        case mock = "Mock"
+        case cache = "Cache"
+        case download = "Download"
     }
     
     private static let instance = AppLogger()
@@ -62,6 +73,8 @@ extension AppLogger.Category {
             "VIEW::\(view)"
         case .UC(let useCase):
             "UC::\(useCase)"
+        case .Network(let networkCategory):
+            "Network::\(networkCategory.rawValue)"
         }
     }
 }

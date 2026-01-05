@@ -112,9 +112,9 @@ extension RequestProtocol {
 	
 	public func cancel() async {
 		let description = self.description
-		
+
 		guard let request = await RequestManager.shared.tasks[description] else { return }
-		Logger.requestCancel.notice("\(description)")
+		AppLogger.l("Request cancelled: \(description)", level: .info, category: .Network(.requestCancel))
 		request.cancel()
 	}
 }

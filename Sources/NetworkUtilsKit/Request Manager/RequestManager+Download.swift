@@ -59,9 +59,9 @@ private actor NetworkDownloadManagement: NSObject, URLSessionDownloadDelegate {
 		}
 		
 		if response.statusCode >= 200 && response.statusCode < 300 {
-			
-			Logger.download.notice("\(self.identifier ?? "")")
-			
+
+			AppLogger.l("Download completed: \(self.identifier ?? "")", level: .info, category: .Network(.download))
+
 			do {
 				try FileManager.default.moveItem(at: location, to: destination)
 				self.completion?(.success(response.statusCode))
@@ -71,10 +71,10 @@ private actor NetworkDownloadManagement: NSObject, URLSessionDownloadDelegate {
 			return
 		} else {
 			let error = ResponseError.network(response: response, data: nil)
-			Logger.download.fault("\(self.identifier ?? "") - \(error.localizedDescription)")
-			
+			AppLogger.l("Download failed: \(self.identifier ?? "") - \(error.localizedDescription)", level: .error, category: .Network(.download))
+
 			self.completion?(.failure(error))
-			
+
 			return
 		}
 	}
@@ -86,11 +86,11 @@ private actor NetworkDownloadManagement: NSObject, URLSessionDownloadDelegate {
 			self.completion?(.failure(task.error ?? ResponseError.unknow))
 			return
 		}
-		
+
 		let requestError = ResponseError.network(response: response, data: nil)
-		Logger.download.fault("\(self.identifier ?? "") - \(requestError.localizedDescription)")
+		AppLogger.l("Download error: \(self.identifier ?? "") - \(requestError.localizedDescription)", level: .error, category: .Network(.download))
 		self.completion?(.failure(requestError))
-		
+
 		return
 	}
 	
@@ -185,9 +185,9 @@ extension RequestManager {
 		if let timeoutInterval = timeout ?? self.downloadTimeoutInterval {
 			request.timeoutInterval = timeoutInterval
 		}
-		
-		Logger.download.notice("\(requestId)")
-		
+
+		AppLogger.l("Download started: \(requestId)", level: .info, category: .Network(.download))
+
 		session.downloadTask(with: request).resume()
 	}
 	
