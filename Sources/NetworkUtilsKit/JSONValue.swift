@@ -5,7 +5,7 @@
 //  Created by Limagne on 06/01/2026.
 //
 
-public enum JSONValue: Decodable {
+public enum JSONValue: Decodable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)
