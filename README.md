@@ -79,7 +79,8 @@ import AxiomeUtilsKit
   - et si `authentification` implemente `AuthentificationRefreshableProtocol` (ou tableau contenant des refreshables),
   - alors refresh puis un second appel est tente.
 - Annulation:
-  - `await request.cancel()` annule la `Task` reseau en cours associee a `request.description`.
+  - `await request.cancel()` annule toutes les `Task` reseau en cours associees a `request.description`.
+  - si la `Task` appelante est annulee (`task.cancel()`), la requete HTTP sous-jacente est aussi annulee automatiquement.
 - Cache:
   - `response()` peut servir depuis cache ou fallback cache selon `NetworkCacheType`.
 
@@ -410,6 +411,7 @@ _ = try await RequestManager.shared.download(
 Comportement `forceDownload`:
 - `false` + fichier deja present => retourne succes `200` sans re-download.
 - `true` + fichier deja present => supprime puis retente download.
+- si la `Task` appelante est annulee, le `URLSessionDownloadTask` sous-jacent est annule aussi.
 
 ## Annuler une requete en cours
 ```swift
@@ -420,6 +422,17 @@ let task = Task {
 
 // Plus tard:
 await request.cancel()
+_ = try? await task.value
+```
+
+Tu peux aussi annuler directement la task appelante:
+```swift
+let task = Task {
+    try await GetUserRequest(userID: 42).response(UserDTO.self)
+}
+
+// Plus tard:
+task.cancel() // annule la requete HTTP en cours
 _ = try? await task.value
 ```
 

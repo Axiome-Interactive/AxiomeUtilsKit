@@ -21,7 +21,7 @@ import FoundationNetworking
 #endif
 
 extension Logger {
-	static let data = Logger(subsystem: "NetworkUtilsKit", category: "Data")
+    static let data = Logger(subsystem: "NetworkUtilsKit", category: "Data")
 }
 
 /// Request headers
@@ -40,6 +40,8 @@ public typealias NetworkResponse = (statusCode: Int?, data: Data?)
 /// Manage all requests
 public actor RequestManager {
     
+    typealias RequestTask = Task<(Data, URLResponse), Error>
+    
     // MARK: - Singleton
     /// The shared singleton RequestManager object
     public static let shared = RequestManager()
@@ -56,19 +58,37 @@ public actor RequestManager {
     
     /// Interval before request time out
     public var downloadTimeoutInterval: TimeInterval?
-
-    private(set) var tasks: [String: Task<(Data, URLResponse), Error>] = [:]
+    
+    private(set) var tasks: [String: [UUID: RequestTask]] = [:]
     
     // MARK: - Init
     private init() {
         self.requestConfiguration = URLSessionConfiguration.default
         self.downloadConfiguration = URLSessionConfiguration.default
     }
-	
-    func set(task: Task<(Data, URLResponse), Error>?, for key: String) {
-        self.tasks[key] = task
+    
+    @discardableResult
+    func register(task: RequestTask, for key: String) -> UUID {
+        let taskID = UUID()
+        var tasksForKey = self.tasks[key] ?? [:]
+        tasksForKey[taskID] = task
+        self.tasks[key] = tasksForKey
+        return taskID
     }
-
+    
+    func unregisterTask(for key: String, taskID: UUID) {
+        guard var tasksForKey = self.tasks[key] else { return }
+        tasksForKey.removeValue(forKey: taskID)
+        self.tasks[key] = tasksForKey.isEmpty ? nil : tasksForKey
+    }
+    
+    @discardableResult
+    func cancelTasks(for key: String) -> Int {
+        guard let tasksForKey = self.tasks.removeValue(forKey: key) else { return 0 }
+        tasksForKey.values.forEach { $0.cancel() }
+        return tasksForKey.count
+    }
+    
     func setRequestConfiguration(_ configuration: URLSessionConfiguration) {
         self.requestConfiguration = configuration
     }
@@ -90,9 +110,9 @@ extension RequestManager {
         components.path = path
         components.port = port
         
-		var finalUrlParameters = parameters?.map {
-			URLQueryItem(name: $0.key, value: $0.value)
-		} ?? []
+        var finalUrlParameters = parameters?.map {
+            URLQueryItem(name: $0.key, value: $0.value)
+        } ?? []
         
         // Authen Params
         authentification?.urlQueryItems.forEach { query in
@@ -108,16 +128,16 @@ extension RequestManager {
         
         return components
     }
-	
-	private func getFormEncodedBodyData(parameters: [String: any Sendable]?) -> Data? {
-		guard let parameters, !parameters.isEmpty else { return nil }
-
-		var requestBody = URLComponents()
-		requestBody.queryItems = parameters.map { URLQueryItem(name: $0.key, value: String(describing: $0.value)) }
-		return requestBody.query?.data(using: .utf8)
-	}
-	
-	private func getHeaders(headers: Headers?,
+    
+    private func getFormEncodedBodyData(parameters: [String: any Sendable]?) -> Data? {
+        guard let parameters, !parameters.isEmpty else { return nil }
+        
+        var requestBody = URLComponents()
+        requestBody.queryItems = parameters.map { URLQueryItem(name: $0.key, value: String(describing: $0.value)) }
+        return requestBody.query?.data(using: .utf8)
+    }
+    
+    private func getHeaders(headers: Headers?,
                             authentification: AuthentificationProtocol?) async -> Headers {
         var finalHeaders: Headers = await authentification?.headers ?? [:]
         
@@ -132,70 +152,70 @@ extension RequestManager {
     internal func buildRequest(scheme: String,
                                host: String,
                                path: String,
-							   port: Int?,
-							   method: RequestMethod,
-							   urlParameters: [String: String]?,
-							   parameters: Parameters?,
-							   files: [RequestFile]?,
-							   headers: Headers?,
-							   authentification: AuthentificationProtocol?,
-							   timeout: TimeInterval?,
+                               port: Int?,
+                               method: RequestMethod,
+                               urlParameters: [String: String]?,
+                               parameters: Parameters?,
+                               files: [RequestFile]?,
+                               headers: Headers?,
+                               authentification: AuthentificationProtocol?,
+                               timeout: TimeInterval?,
                                cachePolicy: URLRequest.CachePolicy = .reloadIgnoringLocalCacheData) async throws -> URLRequest {
         // URL components
         let components = self.getUrlComponents(scheme: scheme,
                                                host: host,
                                                path: path,
                                                port: port,
-											   parameters: urlParameters,
+                                               parameters: urlParameters,
                                                authentification: authentification)
         
         guard let url = components.url else { throw RequestError.url }
         
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
-		request.timeoutInterval = timeout ?? self.requestTimeoutInterval
+        request.timeoutInterval = timeout ?? self.requestTimeoutInterval
         request.cachePolicy = cachePolicy // .reloadIgnoringLocalCacheData allow reponse 304 instead of 200.
         
         // Final headers
         let finalHeaders = await self.getHeaders(headers: headers, authentification: authentification)
         finalHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         
-		switch parameters {
-		case .encodable(let value):
+        switch parameters {
+        case .encodable(let value):
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(value)
             
-		case .formURLEncoded(let values):
-			request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-			request.httpBody = self.getFormEncodedBodyData(parameters: values)
-			
+        case .formURLEncoded(let values):
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = self.getFormEncodedBodyData(parameters: values)
+            
         case .formData(let value):
-			var multipart = MultipartRequest()
-			
-			for parameter in value {
-				multipart.add(key: parameter.key, value: "\(parameter.value)")
-			}
-			
-			for file in files ?? [] {
-				multipart.add(
-					key: file.key,
-					fileName: file.name,
-					fileMimeType: file.type,
-					fileData: file.data
-				)
-			}
-			
-			request.setValue(multipart.httpContentTypeHeadeValue,
-							 forHTTPHeaderField: "Content-Type")
-			
-			request.httpBody = multipart.httpBody
-			
-		case .other(let type, let data):
-			request.setValue(type.value, forHTTPHeaderField: type.key)
-			request.httpBody = data
-			
-		case .none: break
-		}
-		return request
-	}
+            var multipart = MultipartRequest()
+            
+            for parameter in value {
+                multipart.add(key: parameter.key, value: "\(parameter.value)")
+            }
+            
+            for file in files ?? [] {
+                multipart.add(
+                    key: file.key,
+                    fileName: file.name,
+                    fileMimeType: file.type,
+                    fileData: file.data
+                )
+            }
+            
+            request.setValue(multipart.httpContentTypeHeadeValue,
+                             forHTTPHeaderField: "Content-Type")
+            
+            request.httpBody = multipart.httpBody
+            
+        case .other(let type, let data):
+            request.setValue(type.value, forHTTPHeaderField: type.key)
+            request.httpBody = data
+            
+        case .none: break
+        }
+        return request
+    }
 }

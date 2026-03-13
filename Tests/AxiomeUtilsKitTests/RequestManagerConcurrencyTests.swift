@@ -40,15 +40,73 @@ final class RequestManagerConcurrencyTests: XCTestCase {
         try await waitUntilRegisteredTask(for: request.description)
         await request.cancel()
 
-        do {
-            _ = try await inFlightTask.value
-            XCTFail("Expected a cancellation error.")
-        } catch {
-            let nsError = error as NSError
-            let isCancelled = error is CancellationError
-                || (nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
-            XCTAssertTrue(isCancelled, "Expected cancellation error, got \(error).")
+        await assertCancellationError(for: inFlightTask)
+
+        let inFlightAfterCancellation = await RequestManager.shared.tasks[request.description]
+        XCTAssertNil(inFlightAfterCancellation)
+    }
+
+    func testParentTaskCancellationCancelsUnderlyingNetworkRequest() async throws {
+        await TestURLProtocol.setHandler { request in
+            try await Task.sleep(for: .seconds(5))
+
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                  ) else {
+                throw URLError(.badServerResponse)
+            }
+
+            return (response, Data("ok".utf8))
         }
+
+        let request = TestRequest(path: "/slow-parent-cancel")
+        let parentTask: Task<NetworkResponse, Error> = Task {
+            try await RequestManager.shared.request(request)
+        }
+
+        try await waitUntilRegisteredTask(for: request.description)
+        parentTask.cancel()
+
+        await assertCancellationError(for: parentTask)
+
+        let inFlightAfterCancellation = await RequestManager.shared.tasks[request.description]
+        XCTAssertNil(inFlightAfterCancellation)
+    }
+
+    func testCancelCancelsAllRequestsWithSameDescription() async throws {
+        await TestURLProtocol.setHandler { request in
+            try await Task.sleep(for: .seconds(5))
+
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                  ) else {
+                throw URLError(.badServerResponse)
+            }
+
+            return (response, Data("ok".utf8))
+        }
+
+        let request = TestRequest(path: "/same-description")
+        let firstTask: Task<NetworkResponse, Error> = Task {
+            try await RequestManager.shared.request(request)
+        }
+        let secondTask: Task<NetworkResponse, Error> = Task {
+            try await RequestManager.shared.request(request)
+        }
+
+        try await waitUntilRegisteredTaskCount(for: request.description, expectedCount: 2)
+        await request.cancel()
+
+        await assertCancellationError(for: firstTask)
+        await assertCancellationError(for: secondTask)
 
         let inFlightAfterCancellation = await RequestManager.shared.tasks[request.description]
         XCTAssertNil(inFlightAfterCancellation)
@@ -99,13 +157,49 @@ final class RequestManagerConcurrencyTests: XCTestCase {
         let deadline = clock.now + timeout
 
         while clock.now < deadline {
-            if await RequestManager.shared.tasks[description] != nil {
+            let taskCount = await RequestManager.shared.tasks[description]?.count ?? 0
+            if taskCount > 0 {
                 return
             }
             try await Task.sleep(for: .milliseconds(20))
         }
 
         XCTFail("Timed out waiting for request task registration.")
+    }
+
+    private func waitUntilRegisteredTaskCount(
+        for description: String,
+        expectedCount: Int,
+        timeout: Duration = .seconds(2)
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+
+        while clock.now < deadline {
+            let taskCount = await RequestManager.shared.tasks[description]?.count ?? 0
+            if taskCount >= expectedCount {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        XCTFail("Timed out waiting for \(expectedCount) request tasks registration.")
+    }
+
+    private func assertCancellationError<T>(
+        for task: Task<T, Error>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await task.value
+            XCTFail("Expected a cancellation error.", file: file, line: line)
+        } catch {
+            let nsError = error as NSError
+            let isCancelled = error is CancellationError
+                || (nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled)
+            XCTAssertTrue(isCancelled, "Expected cancellation error, got \(error).", file: file, line: line)
+        }
     }
 }
 
