@@ -28,7 +28,7 @@ extension AuthentificationProtocol {
     public var urlQueryItems: [URLQueryItem] { [] }
 }
 
-extension Array: AuthentificationProtocol where Element == AuthentificationProtocol {
+extension Array: AuthentificationProtocol where Element == any AuthentificationProtocol {
     
     public var headers: Headers {
 		get async {
@@ -51,11 +51,11 @@ extension Array: AuthentificationProtocol where Element == AuthentificationProto
 extension AuthentificationProtocol {
 	
 	nonisolated func refreshIfNeeded(from request: URLRequest?) async {
-		if let authent = self as? AuthentificationRefreshableProtocol, await !authent.isValid {
+		if let authent = self as? any AuthentificationRefreshableProtocol, await !authent.isValid {
 			try? await authent.refresh(from: request)
 		}
 		
-		if let authents = (self as? [AuthentificationProtocol])?.compactMap({ $0 as? AuthentificationRefreshableProtocol }) {
+		if let authents = (self as? [any AuthentificationProtocol])?.compactMap({ $0 as? any AuthentificationRefreshableProtocol }) {
 			for authent in authents where await !authent.isValid {
 				try? await authent.refresh(from: request)
 			}

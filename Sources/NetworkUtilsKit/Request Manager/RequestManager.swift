@@ -56,8 +56,8 @@ public actor RequestManager {
     
     /// Interval before request time out
     public var downloadTimeoutInterval: TimeInterval?
-	
-	private(set) var tasks: [String: URLSessionDataTask] = [:]
+
+    private(set) var tasks: [String: Task<(Data, URLResponse), Error>] = [:]
     
     // MARK: - Init
     private init() {
@@ -65,9 +65,13 @@ public actor RequestManager {
         self.downloadConfiguration = URLSessionConfiguration.default
     }
 	
-	func set(task: URLSessionDataTask?, for key: String) {
-		self.tasks[key] = task
-	}
+    func set(task: Task<(Data, URLResponse), Error>?, for key: String) {
+        self.tasks[key] = task
+    }
+
+    func setRequestConfiguration(_ configuration: URLSessionConfiguration) {
+        self.requestConfiguration = configuration
+    }
 }
 
 // MARK: - Utils
@@ -105,18 +109,12 @@ extension RequestManager {
         return components
     }
 	
-	private func getFormEncodedBodyData(parameters: [String: Any]?,
-										authentification: AuthentificationProtocol?) -> Data? {
+	private func getFormEncodedBodyData(parameters: [String: any Sendable]?) -> Data? {
 		guard let parameters, !parameters.isEmpty else { return nil }
-		
-		if JSONSerialization.isValidJSONObject(parameters) {
-			var requestBody = URLComponents()
-			requestBody.queryItems = parameters.map { URLQueryItem(name: $0.key, value: "\($0.value)") }
-			return requestBody.query?.data(using: .utf8)
-		} else {
-			Logger.data.fault("JSON is invalid - \(RequestError.json.localizedDescription)")
-			return nil
-		}
+
+		var requestBody = URLComponents()
+		requestBody.queryItems = parameters.map { URLQueryItem(name: $0.key, value: String(describing: $0.value)) }
+		return requestBody.query?.data(using: .utf8)
 	}
 	
 	private func getHeaders(headers: Headers?,
@@ -169,7 +167,7 @@ extension RequestManager {
             
 		case .formURLEncoded(let values):
 			request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-			request.httpBody = self.getFormEncodedBodyData(parameters: values, authentification: authentification)
+			request.httpBody = self.getFormEncodedBodyData(parameters: values)
 			
         case .formData(let value):
 			var multipart = MultipartRequest()

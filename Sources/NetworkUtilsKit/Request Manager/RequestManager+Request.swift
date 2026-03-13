@@ -20,25 +20,6 @@ import UtilsKit
 import FoundationNetworking
 #endif
 
-extension URLSession {
-	
-	nonisolated func data(with request: URLRequest, description: String) async throws -> (Data?, URLResponse?) {
-		try await withUnsafeThrowingContinuation { continuation in
-			Task {
-				let task = self.dataTask(with: request) { data, response, error in
-					Task {
-						await RequestManager.shared.set(task: nil, for: description)
-						if let error = error { continuation.resume(throwing: error); return }
-						continuation.resume(returning: (data, response))
-					}
-				}
-				await RequestManager.shared.set(task: task, for: description)
-				task.resume()
-			}
-		}
-	}
-}
-
 // MARK: - Request
 extension RequestManager {
 	
@@ -79,18 +60,23 @@ extension RequestManager {
 		AppLogger.l("Request sent: \(description)", level: .info, category: .Network(.requestSend))
 
 		// Date
-		let startDate = Date()
+		let startDate = Date.now
 		let session = URLSession(configuration: self.requestConfiguration)
 		session.configuration.timeoutIntervalForRequest = timeout ?? self.requestTimeoutInterval
+		let requestTask = Task {
+			try await session.data(for: request)
+		}
+		self.set(task: requestTask, for: description)
 		
 		do {
 			// Call
-			let (data, response) = try await session.data(with: request, description: description)
+			let (data, response) = try await requestTask.value
+			self.set(task: nil, for: description)
 			
 			// Time
-			let time = Date().timeIntervalSince(startDate)
-			let requestId = "\(description) - \(String(format: "%0.3f", time))s"
-			
+			let time = Date.now.timeIntervalSince(startDate)
+			let requestId = "\(description) - \(time.formatted(.number.precision(.fractionLength(3))))s"
+		
 			// Response
 			guard let response = response as? HTTPURLResponse else { throw ResponseError.unknow }
 			
@@ -106,12 +92,12 @@ extension RequestManager {
 											 response: response,
 											 data: data)
 				
-				var refreshArray: [AuthentificationRefreshableProtocol] = []
+				var refreshArray: [any AuthentificationRefreshableProtocol] = []
 				
-				if let refreshAuthent = authentification as? AuthentificationRefreshableProtocol {
+				if let refreshAuthent = authentification as? any AuthentificationRefreshableProtocol {
 					refreshArray = [refreshAuthent]
-				} else if let authentificationArray = (authentification as? [AuthentificationProtocol])?
-					.compactMap({ $0 as? AuthentificationRefreshableProtocol }) {
+				} else if let authentificationArray = (authentification as? [any AuthentificationProtocol])?
+					.compactMap({ $0 as? any AuthentificationRefreshableProtocol }) {
 					refreshArray = authentificationArray
 				}
 				
@@ -144,12 +130,13 @@ extension RequestManager {
 									   data: data)
 			}
 		} catch {
+			self.set(task: nil, for: description)
 			AppLogger.l("Request failed: \(description) - \(error.localizedDescription)", level: .error, category: .Network(.requestFail))
 			throw error
 		}
 	}
 	
-	private func refresh(authentification: [AuthentificationRefreshableProtocol],
+	private func refresh(authentification: [any AuthentificationRefreshableProtocol],
 						 requestId: String,
 						 request: URLRequest) async throws {
 		guard let first = authentification.first else {

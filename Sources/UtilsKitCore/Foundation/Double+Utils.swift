@@ -14,11 +14,11 @@ extension Double {
     }
 
     public var asFormattedDistance: String {
-        String(format: "%.2f", self)
+        self.formatted(.number.precision(.fractionLength(2)))
     }
 
     public var asFormattedScale: String {
-        "\(String(format: "%.2f", metersToKm))km"
+        "\(metersToKm.formatted(.number.precision(.fractionLength(2))))km"
     }
 
     public func roundNearMultiple(multiple: Double) -> Double {

@@ -34,12 +34,12 @@ private actor NetworkDownloadManagement: NSObject, URLSessionDownloadDelegate {
 		self.destination = destination
 		self.identifier = identifier
 		self.completion = { result -> Void in
-			DispatchQueue.main.async {
+			Task { @MainActor in
 				completion?(result)
 			}
 		}
 		self.progress = { value in
-			DispatchQueue.main.async {
+			Task { @MainActor in
 				progress?(value)
 			}
 		}

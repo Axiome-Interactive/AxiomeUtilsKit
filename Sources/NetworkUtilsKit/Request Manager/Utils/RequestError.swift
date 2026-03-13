@@ -8,7 +8,7 @@
 import Foundation
 
 // MARK: - Network error Enum
-public enum RequestError: Error, LocalizedError {
+public enum RequestError: Error, LocalizedError, Sendable {
 	case url, json, emptyCache
 	
 	/// Request status code

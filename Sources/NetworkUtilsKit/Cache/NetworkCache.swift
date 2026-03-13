@@ -13,13 +13,13 @@ import FoundationNetworking
 
 private let kUserDefaultsName = "UtilsKit.NetworkCache"
 
-public enum NetworkCacheType {
+public enum NetworkCacheType: Sendable {
 	case returnCacheDataElseLoad
 	case returnCacheDataDontLoad
 	case returnLoadElseCacheData
 }
 
-public struct CacheKey {
+public struct CacheKey: Sendable {
     let key: String
     let availableDate: Date
 	let type: NetworkCacheType
@@ -32,7 +32,7 @@ public struct CacheKey {
         guard let date = Calendar.current.date(byAdding: DateComponents(day: days,
 																		hour: hours,
 																		minute: minutes),
-                                               to: Date())
+	                                               to: Date.now)
         else { return nil }
         
         self.key = key
@@ -60,7 +60,7 @@ internal struct NetworkCache {
     internal func get(_ key: CacheKey) -> Data? {
         guard
             let date = self.defaults?.object(forKey: "date_\(key.key)") as? Date,
-            date >= Date()
+	            date >= Date.now
         else {
             self.delete(key)
             return nil

@@ -8,8 +8,8 @@
 import Foundation
 
 public enum Parameters: Sendable {
-	case encodable(Encodable & Sendable)
-	case formURLEncoded([String: Sendable])
-	case formData([String: Sendable])
+	case encodable(any Encodable & Sendable)
+	case formURLEncoded([String: any Sendable])
+	case formData([String: any Sendable])
 	case other(type: (key: String, value: String), data: Data)
 }
